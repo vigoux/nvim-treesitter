@@ -15,6 +15,14 @@ local repositories = {
   rust = {
     url = "https://github.com/tree-sitter/tree-sitter-rust",
     files = { "src/parser.c", "src/scanner.c" },
+  },
+  python = {
+    url = 'https://github.com/tree-sitter/tree-sitter-python.git',
+    files = {'src/parser.c', 'src/scanner.cc'},
+  },
+  lua = {
+    url = 'https://github.com/vigoux/tree-sitter-lua.git',
+    files = {'src/parser.c', 'src/scanner.cc'},
   }
 }
 
