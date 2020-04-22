@@ -82,6 +82,10 @@ M.repositories = {
     url = "https://github.com/tree-sitter/tree-sitter-typescript",
     files = { "src/parser.c", "src/scanner.c" },
     location = "tree-sitter-tsx/tsx"
+  },
+  markdown = {
+    url = "https://github.com/ikatyang/tree-sitter-markdown.git",
+    files = {"src/parser.c"}
   }
 }
 
