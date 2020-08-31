@@ -17,10 +17,6 @@ local folds_levels = utils.memoize_by_buf_tick(function(bufnr)
     -- This can be folded
     -- Fold only multiline nodes that are not exactly the same as prevsiously met folds
     if start ~= stop and not (levels_tmp[start] and levels_tmp[stop]) then
-      if levels_tmp[start] and levels_tmp[stop] then
-        print("folding twice :", start, stop)
-      end
-
       levels_tmp[start] = (levels_tmp[start] or 0) + 1
       levels_tmp[stop] = (levels_tmp[stop] or 0) - 1
     end
@@ -47,14 +43,18 @@ local folds_levels = utils.memoize_by_buf_tick(function(bufnr)
   return levels
 end)
 
-function M.get_fold_indic(lnum)
-  if not parsers.has_parser() or not lnum then return '0' end
+local function line_based_fn(get_values)
+  return function(lnum)
+    if not parsers.has_parser() or not lnum then return '0' end
 
-  local buf = api.nvim_get_current_buf()
+    local buf = api.nvim_get_current_buf()
 
-  local levels = folds_levels(buf) or {}
+    local values = get_values(buf) or {}
 
-  return levels[lnum] or '0'
+    return values[lnum] or '0'
+  end
 end
+
+M.get_fold_indic = line_based_fn(folds_levels)
 
 return M
