@@ -1,77 +1,60 @@
 local api = vim.api
 local utils = require'nvim-treesitter.ts_utils'
-local query = require'nvim-treesitter.query'
+local query = require'vim.treesitter.query'
 local parsers = require'nvim-treesitter.parsers'
 
-local M = {}
+local M = {
+  enabled_buffers = {}
+}
 
--- This is cached on buf tick to avoid computing that multiple times
--- Especially not for every line in the file when `zx` is hit
-local folds_levels = utils.memoize_by_buf_tick(function(bufnr)
-  local lang = parsers.get_buf_lang(bufnr)
-  local max_fold_level = api.nvim_win_get_option(0, 'foldnestmax')
-
-  local matches
-  if query.has_folds(lang) then
-    matches = query.get_capture_matches(bufnr, "@fold", "folds")
-  elseif query.has_locals(lang) then
-    matches = query.get_capture_matches(bufnr, "@scope", "locals")
-  else
-    return {}
+function map_windows(bufnr, func)
+  for _, winnr in ipairs(vim.fn.win_findbuf(bufnr)) do
+    func(winnr)
   end
+end
 
-  local levels_tmp = {}
+function setup_folds(bufnr, start_row, start_col, end_row, end_col)
+  map_windows(bufnr, function(winnr)
+    api.nvim_win_del_fold(winnr, start_row + 1, end_row + 1, true)
+  end)
 
-  for _, node in ipairs(matches) do
-    local start, _, stop, stop_col = node.node:range()
+  local parser = parsers.get_parser(bufnr)
+  local q = query.get_query(parser:lang(), "folds")
 
-    if stop_col > 0 then
-      stop = stop + 1
-    end
+  for _, tree in ipairs(parser:trees()) do
+    local root = tree:root()
 
-    -- This can be folded
-    -- Fold only multiline nodes that are not exactly the same as previously met folds
-    if start ~= stop and not (levels_tmp[start] and levels_tmp[stop]) then
-      levels_tmp[start] = (levels_tmp[start] or 0) + 1
-      levels_tmp[stop] = (levels_tmp[stop] or 0) - 1
-    end
-
-  end
-
-  local levels = {}
-  local current_level = 0
-
-  -- We now have the list of fold opening and closing, fill the gaps and mark where fold start
-  for lnum=0, api.nvim_buf_line_count(bufnr) do
-    local prefix = ''
-    local shift = levels_tmp[lnum] or 0
-
-    -- Determine if it's the start of a fold
-    if levels_tmp[lnum] and shift >= 0 then
-      prefix = '>'
-    end
-
-    current_level = current_level + shift
-
-    -- Ignore folds greater than max_fold_level
-    if current_level > max_fold_level then
-      levels[lnum + 1] = max_fold_level
-    else
-      levels[lnum + 1] = prefix .. tostring(current_level)
+    local starting_point = root:descendant_for_range(start_row, start_col, end_row, end_col)
+    if starting_point then
+      for id, node in q:iter_captures(starting_point, bufnr, start_row, end_row) do
+        local sr, sc, er, ec = node:range();
+        map_windows(bufnr, function(winnr)
+          api.nvim_win_add_fold(winnr, sr + 1, sc+1, er+1, ec+1)
+        end)
+      end
     end
   end
+end
 
-  return levels
-end)
+function changes_cb(bufnr, changes, tree)
+  if not M.enabled_buffers[bufnr] then return end
 
-function M.get_fold_indic(lnum)
-  if not parsers.has_parser() or not lnum then return '0' end
+  for change in changes do
+    setup_folds(bufnr, unpack(change))
+  end
+end
 
-  local buf = api.nvim_get_current_buf()
+function M.attach(bufnr, lang)
+  local parser = parsers.get_parser(bufnr, lang)
+  if not parser then return end
+  -- For now do this only for root level
+  parser:register_cbs { on_changedtree = function(...) changes_cb(bufnr, ...) end }
 
-  local levels = folds_levels(buf) or {}
+  M.enabled_buffers[bufnr] = true
+end
 
-  return levels[lnum] or '0'
+function M.detach(bufnr)
+  M.enabled_buffers[bufnr] = false
 end
 
 return M
